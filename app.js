@@ -1,23 +1,24 @@
 const express = require("express");
 const app = express();
 const http = require("http").createServer(app);
-const port = process.env.PORT || 8000;
+const port = process.env.PORT || 5000;
 const io = require("socket.io")(http, {
     cors: {
-        origin: "https://localhost:3000"
+        origin: "http://localhost:3000"
     }
 });
 
 io.on("connection", socket => {
-    socket.emit("id", { id: socket.id });
+    socket.emit("setId", socket.id);
 
-    socket.on("call-user", ({ offer, to }) => {
-        socket.join("caller");
-        io.to(to).emit("user-calls", { offer, from: socket.id });
+    socket.on("callUser", data => {
+        console.log("someone wants to call a user");
+        io.to(data.idToCall).emit("userCalling", data);
     });
 
-    socket.on("answer-call", ({ answer, from }) => {
-        io.to("caller").emit("answer-received", { answer });
+    socket.on("answerSent", data => {
+        console.log("person being called sent back an answer to " + data.from);
+        io.to(data.from).emit("callAccepted", data.answer);
     });
 });
 
