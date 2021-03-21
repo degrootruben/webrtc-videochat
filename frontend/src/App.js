@@ -1,9 +1,49 @@
 import { useEffect, useState, useRef } from "react";
 import io from "socket.io-client";
 import SimplePeer from "simple-peer";
-import { Grid } from "@material-ui/core";
+import { Grid, Button, TextField } from "@material-ui/core";
+import { makeStyles } from "@material-ui/core/styles";
+import "@fontsource/roboto";
+
+const useStyles = makeStyles((theme) => ({
+  content: {
+    boxShadow: "2px 2px 10px #b0b0b0",
+    marginTop: "10px",
+    padding: "10px",
+    background: "#242424",
+  },
+
+  info: {
+    display: "inline-block",
+    margin: "10px",
+    border: "1px solid white",
+    padding: "5px",
+    color: "white"
+  },
+
+  infoSection: {
+    textAlign: "center",
+  },
+
+  inputSection: {
+    marginTop: "10px",
+    marginBottom: "10px"
+  },
+
+  inputField: {
+    color: "white",
+    textColor: "white"
+  },
+
+  button: {
+    color: "white",
+    marginLeft: "5px"
+  }
+}));
 
 function App() {
+  const classes = useStyles();
+
   const socket = io.connect("http://localhost:5000");
 
   const [ownId, setOwnId] = useState(null);
@@ -17,7 +57,7 @@ function App() {
   const connection = useRef();
 
   useEffect(() => {
-    navigator.mediaDevices.getUserMedia({ video: true, audio: true}).then((stream) => {
+    navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then((stream) => {
       setLocalStream(stream);
       setHasLocalStream(true);
       localVideo.current.srcObject = stream;
@@ -35,29 +75,29 @@ function App() {
   }, []);
 
   const callUser = () => {
-      const peer = new SimplePeer({
-        initiator: true,
-        trickle: false,
-        stream: localStream
-      });
+    const peer = new SimplePeer({
+      initiator: true,
+      trickle: false,
+      stream: localStream
+    });
 
-      peer.on("signal", data => {
-        console.log("calling user");
-        socket.emit("callUser", { offer: data, idToCall, from: ownId });
-      });
+    peer.on("signal", data => {
+      console.log("calling user");
+      socket.emit("callUser", { offer: data, idToCall, from: ownId });
+    });
 
-      peer.on("stream", (stream) => {
-        console.log("stream received");
-        setHasRemoteStream(true);
-        remoteVideo.current.srcObject = stream;
-      });
+    peer.on("stream", (stream) => {
+      console.log("stream received");
+      setHasRemoteStream(true);
+      remoteVideo.current.srcObject = stream;
+    });
 
-      socket.on("callAccepted", (answer) => {
-        console.log("call accepted");
-        peer.signal(answer);
-      });
+    socket.on("callAccepted", (answer) => {
+      console.log("call accepted");
+      peer.signal(answer);
+    });
 
-      connection.current = peer;
+    connection.current = peer;
   }
 
   const answerCall = (data) => {
@@ -89,20 +129,16 @@ function App() {
     }
   }
 
-  const handleGetId = () => {
-    socket.emit("getId");
-  }
-
   return (
     <div className="App">
-      <Grid container>
-        <Grid item xs={12}>ID: {ownId}</Grid>
+      <Grid className={classes.content} container>
+        <Grid className={classes.infoSection} item xs={12}><span className={classes.info}>ID: {ownId}</span></Grid>
         <Grid item xs={6}>
           {hasLocalStream &&
             <video ref={localVideo} muted playsInline autoPlay style={{
               width: "100%",
               height: "auto",
-            }}/>
+            }} />
           }
         </Grid>
         <Grid item xs={6}>
@@ -110,29 +146,30 @@ function App() {
             <video ref={remoteVideo} playsInline autoPlay style={{
               width: "100%",
               height: "auto"
-            }}/>
+            }} />
           }
         </Grid>
-        <Grid item xs={8}>
-          <input
-            type="text"
-            placeholder="Id of user to call"
-            value={idToCall}
-            onChange={e => setIdToCall(e.target.value)}
-            style={{
-              width: "100%"
-            }}/>
+        <Grid className={classes.inputSection} container item xs={12}>
+          <Grid item xs={4}>
+            <TextField
+              className={classes.inputField}
+              placeholder="Id of user to call"
+              value={idToCall}
+              onChange={e => setIdToCall(e.target.value)}
+              fullWidth
+              />
+          </Grid>
+          <Grid item xs={2}>
+            <Button
+              className={classes.button}
+              variant="outlined"
+              onClick={handleClick}
+              style={{
+                width: "100%"
+              }}
+            >Submit</Button>
+          </Grid>
         </Grid>
-        <Grid item xs={4}>
-          <input
-            type="button"
-            onClick={handleClick}
-            style={{
-              width: "100%"
-            }}
-            value="Submit"/>
-        </Grid>
-        <Grid item xs={12}><input type="button" value="Get id" onClick={handleGetId}/></Grid>
       </Grid>
     </div>
   );
