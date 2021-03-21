@@ -2,24 +2,43 @@ const express = require("express");
 const app = express();
 const http = require("http").createServer(app);
 const port = process.env.PORT || 5000;
-const io = require("socket.io")(http, {
-    cors: {
-        origin: "http://localhost:3000"
-    }
-});
+
+let io;
+if (process.env.NODE_ENV === "development") {
+    io = require("socket.io")(http, {
+        cors: {
+            origin: "http://localhost:3000"
+        }
+    });
+} else if (process.env.NODE_ENV === "production") {
+    io = require("socket.io")(http);
+}
+
+const connectedUsers = {};
 
 io.on("connection", socket => {
-    socket.emit("setId", socket.id);
+    if (!connectedUsers[socket.id]) {
+        connectedUsers[socket.id] = socket.id;
+    }
+
+    socket.emit("yourID", socket.id);
+
+    io.emit("updateUsers", connectedUsers);
 
     socket.on("callUser", data => {
-        console.log("someone wants to call a user");
-        io.to(data.idToCall).emit("userCalling", data);
+        io.to(data.userToCall).emit("userCalling", data);
     });
 
-    socket.on("answerSent", data => {
-        console.log("person being called sent back an answer to " + data.from);
-        io.to(data.from).emit("callAccepted", data.answer);
+    socket.on("sendAnswer", data => {
+        console.log(data);
+        io.to(data.to).emit("callAccepted", data);
     });
+
+    socket.on("disconnect", () => {
+        delete connectedUsers[socket.id];
+        socket.emit("updateUsers", connectedUsers);
+    });
+
 });
 
 http.listen(port, () => {

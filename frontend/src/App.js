@@ -1,179 +1,126 @@
-import { useEffect, useState, useRef } from "react";
 import io from "socket.io-client";
-import SimplePeer from "simple-peer";
-import { Grid, Button, TextField } from "@material-ui/core";
-import { makeStyles } from "@material-ui/core/styles";
-import "@fontsource/roboto";
+import { useEffect, useRef, useState } from "react";
+import Peer from "simple-peer";
 
-const useStyles = makeStyles((theme) => ({
-  content: {
-    boxShadow: "2px 2px 10px #b0b0b0",
-    marginTop: "10px",
-    padding: "10px",
-    background: "#242424",
-  },
-
-  info: {
-    display: "inline-block",
-    margin: "10px",
-    border: "1px solid white",
-    padding: "5px",
-    color: "white"
-  },
-
-  infoSection: {
-    textAlign: "center",
-  },
-
-  inputSection: {
-    marginTop: "10px",
-    marginBottom: "10px"
-  },
-
-  inputField: {
-    color: "white",
-    textColor: "white"
-  },
-
-  button: {
-    color: "white",
-    marginLeft: "5px"
-  }
-}));
-
-function App() {
-  const classes = useStyles();
-
-  const socket = io.connect("http://localhost:5000");
-
-  const [ownId, setOwnId] = useState(null);
-  const [hasLocalStream, setHasLocalStream] = useState(false);
-  const [hasRemoteStream, setHasRemoteStream] = useState(false);
-  const [idToCall, setIdToCall] = useState("");
+const App = () => {
+  const [ID, setID] = useState("");
   const [localStream, setLocalStream] = useState(null);
+  const [callAccepted, setCallAccepted] = useState(false);
+  const [users, setUsers] = useState({});
 
+  const [beingCalled, setBeingCalled] = useState(false);
+  const [receivingSignal, setReceivingSignal] = useState(null);
+  const [caller, setCaller] = useState("");
+
+  const socket = useRef();
   const localVideo = useRef();
   const remoteVideo = useRef();
-  const connection = useRef();
+  const peerConnection = useRef();
 
-  useEffect(() => {
-    navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then((stream) => {
-      setLocalStream(stream);
-      setHasLocalStream(true);
-      localVideo.current.srcObject = stream;
-    });
-
-    socket.on("setId", (socketId) => {
-      console.log(socketId);
-      setOwnId(socketId);
-    });
-
-    socket.on("userCalling", data => {
-      console.log("someone wants to call u");
-      answerCall(data);
-    });
-  }, []);
-
-  const callUser = () => {
-    const peer = new SimplePeer({
+  const callUser = (userToCall) => {
+    const peer = new Peer({
       initiator: true,
       trickle: false,
       stream: localStream
     });
 
-    peer.on("signal", data => {
-      console.log("calling user");
-      socket.emit("callUser", { offer: data, idToCall, from: ownId });
+    peer.on("signal", signal => {
+      socket.current.emit("callUser", { userToCall, signal, from: ID});
     });
 
-    peer.on("stream", (stream) => {
-      console.log("stream received");
-      setHasRemoteStream(true);
+    peer.on("stream", stream => {
       remoteVideo.current.srcObject = stream;
     });
 
-    socket.on("callAccepted", (answer) => {
-      console.log("call accepted");
-      peer.signal(answer);
+    socket.current.on("callAccepted", data => {
+      console.log(data);
+      if (data.signal) {
+
+        setCallAccepted(true);
+        peer.signal(data.signal);
+      }
     });
 
-    connection.current = peer;
+    peerConnection.current = peer;
   }
 
-  const answerCall = (data) => {
-    const peer = new SimplePeer({
+  const acceptCall = () => {
+    const peer = new Peer({
       initiator: false,
       trickle: false,
       stream: localStream
     });
 
-    console.log(data.offer);
-    peer.signal(data.offer);
+    setBeingCalled(false);
+    setCallAccepted(true);
+    peer.signal(receivingSignal);
 
-    peer.on("signal", answer => {
-      console.log("trying to send answer!");
-      socket.emit("answerSent", { answer, from: data.from });
+    peer.on("signal", signal => {
+      socket.current.emit("sendAnswer", { to: caller, signal });
     });
 
     peer.on("stream", stream => {
-      console.log("stream received");
-      setHasRemoteStream(true);
       remoteVideo.current.srcObject = stream;
     });
+
+    peerConnection.current = peer;
   }
 
-  const handleClick = (e) => {
-    e.preventDefault();
-    if (idToCall !== "" && idToCall !== " " && idToCall !== null && idToCall !== undefined) {
-      callUser();
-    }
+  const endCall = () => {
+    peerConnection.current.destroy();
+    setCallAccepted(false);
   }
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === "development") {
+      socket.current = io.connect("http://localhost:5000");
+    } else if (process.env.NODE_ENV === "production") {
+      socket.current = io.connect();
+    }
+
+    navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then(stream => {
+      if (stream) {
+        setLocalStream(stream);
+        localVideo.current.srcObject = stream;
+      }
+    }).catch(error => {
+      console.error(error);
+    });
+
+    socket.current.on("yourID", ID => {
+      if (ID) {
+        setID(ID);
+      }
+    });
+
+    socket.current.on("updateUsers", connectedUsers => {
+      setUsers(connectedUsers);
+    });
+
+    socket.current.on("userCalling", data => {
+      if (data) {
+        setBeingCalled(true);
+        setCaller(data.from);
+        setReceivingSignal(data.signal);
+      }
+    });
+  }, []);
 
   return (
     <div className="App">
-      <Grid className={classes.content} container>
-        <Grid className={classes.infoSection} item xs={12}><span className={classes.info}>ID: {ownId}</span></Grid>
-        <Grid item xs={6}>
-          {hasLocalStream &&
-            <video ref={localVideo} muted playsInline autoPlay style={{
-              width: "100%",
-              height: "auto",
-            }} />
-          }
-        </Grid>
-        <Grid item xs={6}>
-          {hasRemoteStream &&
-            <video ref={remoteVideo} playsInline autoPlay style={{
-              width: "100%",
-              height: "auto"
-            }} />
-          }
-        </Grid>
-        <Grid className={classes.inputSection} container item xs={12}>
-          <Grid item xs={4}>
-            <TextField
-              className={classes.inputField}
-              placeholder="Id of user to call"
-              value={idToCall}
-              onChange={e => setIdToCall(e.target.value)}
-              fullWidth
-              />
-          </Grid>
-          <Grid item xs={2}>
-            <Button
-              className={classes.button}
-              variant="outlined"
-              onClick={handleClick}
-              style={{
-                width: "100%"
-              }}
-            >Submit</Button>
-          </Grid>
-        </Grid>
-      </Grid>
+      { localStream && <video playsInline muted autoPlay ref={localVideo} style={{width: "50vw"}}/>}
+      { callAccepted && <video playsInline autoPlay ref={remoteVideo} style={{width: "50vw"}}/>}
+      { !callAccepted && !beingCalled && Object.keys(users).map(user => {
+        if (user === ID) {
+          return null;
+        } else {
+          return (<button onClick={() => callUser(user)}>Call {user}</button>);
+        }
+      })}
+      { beingCalled && <button onClick={acceptCall}>Click to accept call from {caller}</button>}
+      { callAccepted && <button onClick={endCall}>End call</button>}
     </div>
   );
-
 }
 
 export default App;
