@@ -14,9 +14,9 @@ if (process.env.NODE_ENV === "development") {
 } else if (process.env.NODE_ENV === "production") {
     io = require("socket.io")(http);
 
-    app.use(express.static("client/build"));
+    app.use(express.static("frontend/build"));
     app.get("*", (req, res) => {
-        res.sendFile(path.resolve(__dirname, "client", "build", "index.html"));
+        res.sendFile(path.resolve(__dirname, "frontend", "build", "index.html"));
     });
 }
 
